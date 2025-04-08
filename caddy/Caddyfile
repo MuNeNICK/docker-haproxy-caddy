@@ -1,0 +1,23 @@
+{
+        email <メールアドレス>
+
+        servers {
+                listener_wrappers {
+                        proxy_protocol {
+                                timeout 5s
+                                allow 0.0.0.0/0
+                        }
+                        http_redirect
+                        tls
+                }
+        }
+
+}
+
+https:// {
+        handle_errors {
+                respond {err.status_code}
+        }
+}
+
+import Caddyfiles/*.Caddyfile
