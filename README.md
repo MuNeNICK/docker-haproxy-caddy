@@ -1,112 +1,85 @@
-# リバースプロキシサーバー設定 / Reverse Proxy Server Configuration
+# Reverse Proxy Server Configuration
 
-このプロジェクトは、HAProxyとCaddyを使用したリバースプロキシシステムを構築するためのDocker Compose設定です。外部からのトラフィックを受け付け、指定されたバックエンドサービスに適切に転送します。
+This repository ships a Docker Compose stack that builds an HAProxy + Caddy reverse proxy tier. HAProxy terminates the TCP connections on ports 80/443, forwards traffic to Caddy via Proxy Protocol, and Caddy handles TLS, HTTP routing, and error responses via a dedicated `error-pages` container.
 
-This project contains Docker Compose configuration for building a reverse proxy system using HAProxy and Caddy. It accepts external traffic and appropriately forwards it to specified backend services.
+## Features
 
-## 機能 / Features
+- Automatic HTTP -> HTTPS redirection
+- SNI-based routing controlled by HAProxy
+- On-demand TLS certificates managed by Caddy
+- Client IP preservation through Proxy Protocol
+- Dedicated `error-pages` service that serves every error response
+- Extensible Caddyfile snippets per domain under `caddy/Caddyfiles`
 
-- HTTP(80)からHTTPS(443)への自動リダイレクト / Automatic redirection from HTTP(80) to HTTPS(443)
-- SNI(Server Name Indication)ベースのルーティング / SNI-based routing
-- オンデマンドTLS証明書の自動取得と管理 / Automatic acquisition and management of on-demand TLS certificates
-- ProxyProtocolを使用したクライアントIPの保持 / Client IP preservation using Proxy Protocol
-- 複数バックエンドサービスへの転送 / Forwarding to multiple backend services
-
-## アーキテクチャ / Architecture
+## Architecture
 
 ```
-クライアント → HAProxy(80/443) → Caddy → バックエンドサービス
-Client → HAProxy(80/443) → Caddy → Backend Services
+Client -> HAProxy (80/443) -> Caddy -> Backend services
 ```
 
-- **HAProxy**: フロントエンドとしてすべてのトラフィックを受け付け、必要に応じてSNIベースでルーティングします / Accepts all traffic as the frontend and routes based on SNI when needed
-- **Caddy**: TLS終端処理とリバースプロキシを担当し、バックエンドサービスにトラフィックを転送します / Handles TLS termination and reverse proxying, forwarding traffic to backend services
+- **HAProxy** (see `haproxy/haproxy.cfg`) accepts inbound traffic, negotiates TLS at the TCP layer, and forwards connections based on SNI when needed.
+- **Caddy** (see `caddy/Caddyfile`) terminates HTTP, performs reverse proxying, issues TLS certificates, and forwards errors to the `error-pages` container.
+- **error-pages** provides friendly status pages for every error surfaced by Caddy.
 
-## 前提条件 / Prerequisites
+## Prerequisites
 
-- Docker
-- Docker Compose
-- 公開サーバー（パブリックIPアドレスが必要） / Public server (with a public IP address)
-- 設定するドメイン名のDNS設定 / DNS configuration for the domain names to be set up
+- Docker and Docker Compose
+- Publicly reachable host (public IP)
+- DNS records pointing to that host for every domain you plan to serve
 
-## セットアップ方法 / Setup Instructions
+## Setup
 
-1. リポジトリをクローン / Clone the repository
+1. Clone the repository and switch into it.
    ```
-   git clone [リポジトリURL]
-   cd [プロジェクト名]
+   git clone <repo-url>
+   cd docker-haproxy-caddy
    ```
-
-2. 設定ファイルを編集 / Edit configuration files
-   - `caddy/Caddyfile`: メールアドレスを実際のものに変更 / Replace the email address with a real one
-   - `caddy/Caddyfiles/blog.example.com`: ドメイン名、バックエンドサーバーのIPアドレスとポートを設定 / Configure domain name, backend server IP address and port
-
-3. サービスを起動 / Start services
+2. Update configuration files:
+   - `caddy/Caddyfile`: replace the placeholder email with a real one (used for Let's Encrypt) and adjust any global settings you require.
+   - Add or edit domain-specific snippets in `caddy/Caddyfiles/*.Caddyfile`. A sample file (`caddy/Caddyfiles/blog.example.com`) is provided.
+3. Start the stack.
    ```
    docker-compose up -d
    ```
-
-4. ログを確認 / Check logs
+4. Tail logs as needed.
    ```
-   docker-compose logs -f
-   ```
-
-## 新しいサービスの追加方法 / How to Add New Services
-
-1. Caddyfilesディレクトリに新しいドメイン用の設定ファイルを作成 / Create a configuration file for the new domain in the Caddyfiles directory:
-   ```
-   touch caddy/Caddyfiles/newservice.example.com.Caddyfile
+   docker-compose logs -f haproxy
+   docker-compose logs -f caddy
+   docker-compose logs -f error-pages
    ```
 
-2. 設定ファイルを編集 / Edit the configuration file:
+## Adding a New Service
+
+1. Create a new file under `caddy/Caddyfiles`, for example `newservice.example.com.Caddyfile`:
    ```
    newservice.example.com {
-       reverse_proxy <サービスのIPアドレス>:<サービスのポート>
+       reverse_proxy <service-ip>:<service-port>
 
        tls {
            on_demand
        }
    }
    ```
-
-3. (オプション) HAProxyの設定でSNIベースのルーティングを追加 / (Optional) Add SNI-based routing in HAProxy configuration:
-   `haproxy/haproxy.cfg` ファイルの frontend https セクションに / In the frontend https section of the `haproxy/haproxy.cfg` file:
+2. (Optional) Update `haproxy/haproxy.cfg` to add explicit SNI routing before the default backend:
    ```
    use_backend newservice_backend if { req_ssl_sni -m end newservice.example.com }
-   ```
-   
-   そして、新しいバックエンドセクションを追加 / And add a new backend section:
-   ```
+
    backend newservice_backend
      mode tcp
-     server newservice <サービスのIPアドレス>:443 sni req_ssl_sni
+     server newservice <service-ip>:443 sni req_ssl_sni
    ```
-
-4. 設定を再読み込み / Reload configuration:
+3. Reload the stack so both HAProxy and Caddy pick up the changes.
    ```
    docker-compose restart
    ```
 
-## トラブルシューティング / Troubleshooting
+## Troubleshooting
 
-### ログの確認 / Checking Logs
-```
-# HAProxyのログ / HAProxy logs
-docker-compose logs haproxy
+- **Certificates are not issued**: verify DNS records point to this host and that the email configured in `caddy/Caddyfile` is valid.
+- **Backend cannot be reached**: confirm the IP/port in your Caddyfile snippet is correct and that the backend's firewall allows the traffic.
+- **Logs are empty**: ensure `haproxy` and `caddy` containers are running and inspect `docker-compose logs <service>` for errors.
 
-# Caddyのログ / Caddy logs
-docker-compose logs caddy
-```
+## Notes
 
-### TLS証明書の問題 / TLS Certificate Issues
-Caddyは自動的にLet's Encryptから証明書を取得します。DNSの設定が正しいことと、指定したメールアドレスが有効であることを確認してください。
-Caddy automatically obtains certificates from Let's Encrypt. Make sure your DNS settings are correct and the specified email address is valid.
-
-### バックエンドサービスに接続できない / Cannot Connect to Backend Services
-バックエンドサービスのIPアドレスとポートが正しいことを確認してください。また、ファイアウォール設定でそれらのポートが開いていることを確認してください。
-Verify that the IP address and port of the backend service are correct. Also, check that those ports are open in your firewall settings.
-
-## 注意事項 / Notes
-
-- 本番環境で使用する前に、セキュリティ設定を十分に確認してください / Review security settings thoroughly before using in a production environment
-- `<メールアドレス>`、`<ブログサーバーのIPアドレス>`、`<ブログサーバーのポート>` などのプレースホルダーは、実際の値に置き換えてください / Replace placeholders such as `<メールアドレス>` (email address), `<ブログサーバーのIPアドレス>` (blog server IP address), and `<ブログサーバーのポート>` (blog server port) with actual values
+- Replace every remaining placeholder (such as `<repo-url>`, `<service-ip>`, `<service-port>`, etc.) with real values before deploying.
+- Review security posture and tighten firewall rules before running this stack in production.

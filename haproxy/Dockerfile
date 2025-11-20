@@ -1,19 +1,19 @@
 FROM haproxytech/haproxy-ubuntu:latest
 
-# rsyslog のインストールと設定
+# Install and configure rsyslog to capture HAProxy logs
 RUN apt-get update && apt-get install -y rsyslog && rm -rf /var/lib/apt/lists/*
 
-# rsyslog の設定ファイルを作成
+# Send local0 facility logs to /var/log/haproxy.log
 RUN echo 'local0.* /var/log/haproxy.log' > /etc/rsyslog.d/haproxy.conf
 
-# rsyslog の UDP モジュールを有効化
+# Enable the rsyslog UDP module so HAProxy can emit logs
 RUN sed -i 's/#module(load="imudp")/module(load="imudp")/g' /etc/rsyslog.conf && \
     sed -i 's/#input(type="imudp" port="514")/input(type="imudp" port="514")/g' /etc/rsyslog.conf
 
-# ログディレクトリとログファイルを作成
+# Prepare the log directory with permissive permissions for tailing
 RUN mkdir -p /var/log/haproxy && \
     touch /var/log/haproxy.log && \
     chmod 666 /var/log/haproxy.log
 
-# rsyslogd をフォアグラウンドで起動、HAProxy をバックグラウンド実行し、tail でログを STDOUT に出力
+# Run rsyslogd in the foreground, start HAProxy, and tail the log to STDOUT
 CMD ["/bin/bash", "-c", "rsyslogd -n & haproxy -f /usr/local/etc/haproxy/haproxy.cfg -db & tail -f /var/log/haproxy.log"]

@@ -1,7 +1,7 @@
 blog.example.com {
-        reverse_proxy <ブログサーバーのIPアドレス>:<ブログサーバーのポート>
+	reverse_proxy <blog-server-ip>:<blog-server-port>
 
-        tls {
-            on_demand
-        }
+	tls {
+	    on_demand
+	}
 }

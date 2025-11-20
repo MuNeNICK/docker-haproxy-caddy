@@ -1,5 +1,5 @@
 {
-        email <メールアドレス>
+	email admin@example.com
 
         servers {
                 listener_wrappers {
@@ -16,7 +16,11 @@
 
 https:// {
         handle_errors {
-                respond {err.status_code}
+                rewrite * /{err.status_code}
+                reverse_proxy error-pages:8080 {
+                        header_up X-Original-Status {err.status_code}
+                        header_up X-Original-URI {err.uri}
+                }
         }
 }
 

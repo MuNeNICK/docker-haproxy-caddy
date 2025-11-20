@@ -22,3 +22,10 @@ services:
     volumes:
       - ./caddy/Caddyfile:/etc/caddy/Caddyfile
       - ./caddy/Caddyfiles:/etc/caddy/Caddyfiles
+
+  error-pages:
+    image: tarampampam/error-pages:2.21.0
+    container_name: error-pages
+    restart: always
+    environment:
+      - TEMPLATE_NAME=connection

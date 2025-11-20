@@ -1,6 +1,6 @@
 FROM caddy:builder AS builder
 
-# モジュールの有効化
+# Enable the caddy-l4 module so HAProxy can speak Proxy Protocol
 RUN xcaddy build --with github.com/mholt/caddy-l4/layer4
 
 FROM caddy:latest
